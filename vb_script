@@ -1,0 +1,292 @@
+Option Explicit
+
+Dim gElemNameCounters As Object
+
+
+Dim gElemNamePrefix As Collection
+Dim gInfoNameMap As Collection
+
+Dim gElemStatus As Collection
+
+Private Const addressColumn = "AB"
+Private Const ifsPOIprefix = "IFSPOI  4  92   HafSarp  HAFSLUND "     'identifies ifs-channel, rtu and B1
+
+
+
+
+Public Function createIfsImp()
+    Dim aRow As Range, b As Range
+    Dim SourceSelection As Range
+    Dim ret As String
+    Dim B2name As String
+    Dim B3name As String
+    Dim elementName As String
+    Dim infoName As String
+    Dim ioa As Long
+    
+    
+    ret = initx()
+    
+    
+    Set SourceSelection = Application.Intersect(ActiveSheet.UsedRange, Selection.EntireRow)
+    For Each aRow In SourceSelection.Rows
+        elementName = Range("BM" & (aRow.Row)).Value
+        If IsEmpty(Range("BM" & (aRow.Row)).Value) Or IsEmpty(Range(addressColumn & (aRow.Row)).Value) Or IsNull(elementName) Then
+            
+        Else
+            B2name = Range("L" & (aRow.Row)).Value
+            B3name = Range("M" & (aRow.Row)).Value
+            infoName = gInfoNameMap.Item(Range("J" & (aRow.Row)).Value)
+            ioa = Range(addressColumn & (aRow.Row)).Value
+            
+            ret = ifsPOIprefix & B2name & Space(9 - Len(B2name)) & B3name & Space(9 - Len(B3name))
+            ret = ret & elementName & Space(9 - Len(elementName)) & infoName & Space(9 - Len(infoName)) & "1"
+            ret = ret & Chr(10) & "IFSPOIA " & getStructuredAddressForIfsImp(ioa) & "0  0    0   0   0   0   0    0   0  0  0 0 0    0.0"
+            Range("BO" & (aRow.Row)).Value = ret
+        End If
+    Next aRow
+End Function
+
+
+Public Function testBOx()
+    MsgBox ("hei " & Int(35760 / 256) & (35760 / 256))
+End Function
+
+Private Function getStructuredAddressForIfsImp(ioa As Long)
+    Dim low As Long
+    Dim mid As Long
+    Dim high As Long
+    Dim huh As Long
+    
+    huh = 65536
+    
+    high = 0
+    If (ioa > huh) Then
+        high = Int(ioa / huh)
+        ioa = (ioa Mod huh)
+    End If
+    
+    mid = 0
+    If (ioa > 256) Then
+        mid = Int(ioa / 256)
+        ioa = (ioa Mod 256)
+    End If
+    
+    
+    low = ioa
+    
+    
+    
+    
+    getStructuredAddressForIfsImp = "" & low & Space(4 - Len("" & low)) & mid & Space(4 - Len("" & mid)) & high & Space(4 - Len("" & high))
+End Function
+
+
+Public Function createElementImp()
+    Dim aRow As Range, b As Range
+    Dim SourceSelection As Range
+    Dim maxElemTextLength As Integer
+    Dim ret As String
+    Dim elementName As String
+    Dim previousB3 As String
+    Dim B3 As String
+    
+    Dim previousB2 As String
+    Dim B2 As String
+    
+    Set SourceSelection = Application.Intersect(ActiveSheet.UsedRange, Selection.EntireRow)
+    
+    maxElemTextLength = 20
+    ret = initx()
+    previousB3 = ""
+    previousB2 = ""
+    
+    For Each aRow In SourceSelection.Rows
+    
+        Dim elemTextParts() As String 'two parts
+        Dim elemText As String
+        Dim infoName As String
+        Dim mld_type As String
+        Dim mld_status As String
+        ret = ""
+        elemText = Range("N" & (aRow.Row)).Value
+        
+        Debug.Print "larstest cc "
+        
+        If IsEmpty(Range(addressColumn & (aRow.Row)).Value) Or Range(addressColumn & (aRow.Row)).Value = "" Or elemText = "Res" Or elemText = "Reserve" Or elemText = "[nr]" Or elemText = "" Then
+            
+        Else
+            B2 = Range("L" & (aRow.Row)).Value
+            B3 = Range("M" & (aRow.Row)).Value
+            mld_status = Range("O" & (aRow.Row)).Value
+            mld_type = Range("J" & (aRow.Row)).Value
+            
+            'larstest = GetMType(mld_type)
+            Debug.Print "larstest cc " & mld_type & "   " & GetMType(mld_type) & "  " & mld_status
+            
+            
+            
+            elementName = GetElementName(Range("L" & (aRow.Row)).Value, B3, mld_type)
+            elemTextParts = divideString(elemText, maxElemTextLength, " ")
+            If B2 <> previousB2 Then
+                ret = Chr(10) & "B2      " & Left(B2 & Space(8), 8) & Space(1) & "B2StatV6" & Space(1) & Left(B2, 8)
+                ret = ret & "                                       N"
+                previousB3 = ""
+            End If
+            If B3 <> previousB3 Then
+                ret = ret & Chr(10) & "B3      " & Left(B3 & Space(8), 8) & Space(1) & "B3Gener2" & Space(1) & Left(B3, 8)
+                ret = ret & Chr(10) & "B3B              N"
+                ret = ret & Chr(10) & "ELEM    Bl Spec  BlocTags" & Chr(10)
+            End If
+            
+            ret = ret & "ELEM    " & elementName & GetMType(mld_type) & elemTextParts(1)
+            If Len(elemTextParts(2)) > 0 Or ((mld_type = "VM" Or mld_type = "VE") And mld_status <> "H.Stopp") Or mld_type = "DM" Or (mld_type = "FM" And mld_status <> "Forv") Then
+                infoName = gInfoNameMap.Item(Range("J" & (aRow.Row)).Value)
+                ret = ret & Chr(10) & "DIGITL" & Space(2) & infoName
+                ret = ret & Space(7) & elemTextParts(2)
+                ret = ret & Space(53 - Len(elemTextParts(2)))
+                ret = ret & gElemStatus.Item(mld_status)
+                ret = ret & Chr(10) & "DIGITLA"
+            Else
+                
+            End If
+            
+            Range("BN" & (aRow.Row)).Value = ret
+            Range("BM" & (aRow.Row)).Value = elementName
+            previousB3 = B3
+            previousB2 = B2
+        End If
+    Next aRow
+     
+    
+End Function
+
+
+Private Function divideString(s As String, maxLengthPart1 As Integer, delimiter As String)
+    Dim part1 As String
+    Dim part2 As String
+    Dim ret(1 To 2) As String
+    If (Len(s) <= maxLengthPart1 Or Len(s) < 6) Then
+        part1 = s
+        part2 = ""
+    Else
+        Dim splitIndex As Integer
+        
+        splitIndex = InStrRev(s, delimiter, maxLengthPart1)
+        'MsgBox ("splitIndex " & splitIndex)
+        If splitIndex = 0 Or splitIndex < maxLengthPart1 / 2 Then
+            splitIndex = maxLengthPart1
+        End If
+        part1 = Left(s, splitIndex)
+        part2 = Right(s, Len(s) - splitIndex)
+        part2 = Left(part2, maxLengthPart1)
+    End If
+    ret(1) = (part1)
+    ret(2) = (part2)
+    divideString = ret
+End Function
+
+Public Function testDivide()
+    Dim l() As String
+    Dim str As String
+    str = "Innkoblingsbet. mangler under innkobl."
+    l = divideString(str, 20, " ")
+    MsgBox (Len(str) & Chr(10) & l(1) & Chr(10) & "deling " & Chr(10) & l(2))
+End Function
+
+
+Private Function initx()
+
+
+    Set gElemNameCounters = CreateObject("Scripting.Dictionary")
+    
+    Set gElemNamePrefix = New Collection
+    gElemNamePrefix.Add "Feil", "FM"
+    gElemNamePrefix.Add "Vern", "VM"
+    gElemNamePrefix.Add "Vern", "VE"
+    gElemNamePrefix.Add "Temp", "TE"
+    gElemNamePrefix.Add "Drift", "DM"
+    
+    
+    Set gElemStatus = New Collection
+    gElemStatus.Add "", "H.Stopp"
+    gElemStatus.Add "182", "N.Stopp"
+    gElemStatus.Add "184", "Frakpl"
+    gElemStatus.Add "236", "Stopp"
+    gElemStatus.Add "", "Forv"
+    gElemStatus.Add "", "Feil"
+    gElemStatus.Add "208", "Utløst"
+    gElemStatus.Add "240", "Utløpt"
+    gElemStatus.Add "196", "N.Styr"
+    gElemStatus.Add "196", "Kritisk"
+    gElemStatus.Add "335", "Tilstede"
+    gElemStatus.Add "168", "På"
+    gElemStatus.Add "234", "Pågår"
+    gElemStatus.Add "338", "Auto"
+    gElemStatus.Add "154", "Lukket"
+    gElemStatus.Add "292", "Start"
+    gElemStatus.Add "302", "Drift"
+    gElemStatus.Add "202", "Drklar"
+    gElemStatus.Add "336", "Hånd"
+    gElemStatus.Add "150", "Inne"
+    gElemStatus.Add "335", "Oppfylt"
+    gElemStatus.Add "238", "Utført"
+    gElemStatus.Add "312", "Åpen"
+    gElemStatus.Add "228", "Blokk"
+    gElemStatus.Add "308", "Ute"
+    gElemStatus.Add "167", "Av"
+    gElemStatus.Add "210", "Alarm"
+    
+    Set gInfoNameMap = New Collection
+    gInfoNameMap.Add "AlStat", "FM"
+    gInfoNameMap.Add "AlStat", "VM"
+    gInfoNameMap.Add "AlStat", "VE"
+    gInfoNameMap.Add "SwStat", "DM"
+    gInfoNameMap.Add "MvMoment", "TE"
+    gInfoNameMap.Add "MvMoment", "MÅ"
+    gInfoNameMap.Add "MvMoment", "MV"
+     
+    
+    initx = "ok"
+End Function
+
+Function GetMType(mld_type As String)
+    
+    If mld_type = "VM" Or mld_type = "VE" Then
+        GetMType = "VM-1"
+    ElseIf mld_type = "FM" Then
+        GetMType = "FM-1"
+    ElseIf mld_type = "DM" Then
+        GetMType = "DM-1P"
+    End If
+    GetMType = GetMType & Space(9 - Len(GetMType))
+End Function
+
+
+' Call only once per row
+Function GetElementName(B2 As String, B3 As String, elemType As String)
+    Dim val As Integer
+    Dim id As String
+    val = 10
+    If elemType = "DM" Then
+        val = 20   ' enpolte driftsmeldinger starter på 20
+    End If
+    
+    id = B2 & "_" & B3 & "_" & elemType
+    If gElemNameCounters.exists(id) Then
+        gElemNameCounters.Item(id) = gElemNameCounters.Item(id) + 1
+        val = gElemNameCounters.Item(id)
+    Else
+        
+        gElemNameCounters.Add Key:=id, Item:=val
+    End If
+    GetElementName = gElemNamePrefix.Item(elemType) & val
+    GetElementName = GetElementName & Space(9 - Len(GetElementName))
+End Function
+
+
+
+
+
+
+
